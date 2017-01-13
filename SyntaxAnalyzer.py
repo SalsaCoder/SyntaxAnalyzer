@@ -2,9 +2,6 @@ from treelib import Node, Tree
 from Utils import Lexem, Constants
 
 
-class TreePresenter(object):
-    def __init__(self, param):
-        self.param = param
 
 class Token(object):
     lexem_class = ""
@@ -30,6 +27,7 @@ class SyntaxAnalyzer(object):
     def parse_tokens(self):
         tree, _ = self.__handle_common_block(self.__tokens[:], False, False, False)
         tree.show()
+        tree.show()
 
     def __handle_common_block(self, tokens_list, expect_end_token, expect_elseif_token, expect_else_token):
         common_tree = Tree()
@@ -44,12 +42,6 @@ class SyntaxAnalyzer(object):
             start_tokens_length = len(tokens_list)
 
             tree, new_tokens = self.__handle_arithmetic_expression(tokens_list[:])
-            if tree is not None:
-                common_tree.paste(common_tree.root, tree)
-                tokens_list = new_tokens
-                continue
-
-            tree, new_tokens = self.__handle_comparasion_expression(tokens_list[:])
             if tree is not None:
                 common_tree.paste(common_tree.root, tree)
                 tokens_list = new_tokens
@@ -143,7 +135,7 @@ class SyntaxAnalyzer(object):
             if first_token.lexem_class == Lexem.identifier or \
                 first_token.lexem_class == Lexem.number:
                 tree, new_tokens = self.__handle_arithmetic_expression_helper(current_tokens[:], False)
-                if tree is not None and len(new_tokens):
+                if tree is not None and len(new_tokens) == 0:
 
                     return tree, new_tokens
 
@@ -161,6 +153,16 @@ class SyntaxAnalyzer(object):
 
         return None, tokens_list
 
+    def __handle_arithmetic_expression(self, tokens_list):
+        if len(tokens_list) > 0:
+            first_token = tokens_list[0]
+            current_tokens = self.__get_tokens_for_line(tokens_list, first_token.line_number)
+
+            tree, new_tokens = self.__handle_arithmetic_expression_helper(current_tokens, False)
+            if tree is not None:
+                return tree, tokens_list[len(current_tokens):]
+        return None, tokens_list
+
 
 
     def __handle_arithmetic_expression_helper(self, tokens_list, expecting_close_par):
@@ -168,6 +170,7 @@ class SyntaxAnalyzer(object):
 
             first_token = tokens_list[0]
 
+            tree = None
             if first_token.lexem_class == Lexem.l_par:
                 expr_tree, new_tokens = self.__handle_arithmetic_expression_helper(tokens_list[1:], True)
                 if expr_tree is not None:
@@ -179,7 +182,7 @@ class SyntaxAnalyzer(object):
                     tree.create_node(tag="(", parent=tree.root)
                     tree.paste(tree.root, expr_tree)
                     tree.create_node(tag=")", parent=tree.root)
-                    return tree, new_tokens[1:]
+                    tokens_list = new_tokens
 
             if first_token.lexem_class == Lexem.identifier or \
                 first_token.lexem_class == Lexem.number:
@@ -194,27 +197,32 @@ class SyntaxAnalyzer(object):
                 if len(tokens_list) == 1 and not expecting_close_par:
                     return tree, tokens_list[1:]
 
-                if len(tokens_list) > 1:
+            tokens_list = tokens_list[1:]
 
-                    if tokens_list[1].lexem_class == Lexem.r_par:
-                        if expecting_close_par:
-                            return tree, tokens_list[2:]
-                        else:
-                            raise "Unexpected close brace"
+            if len(tokens_list) == 0:
+                return tree, []
 
-                    arithmetic_token = tokens_list[1]
+            if len(tokens_list) > 0:
 
-                    if arithmetic_token.lexem_class == Lexem.arithmetic_operation:
-                        arithmetic_class_node = tree.create_node(tag=Lexem.arithmetic_operation,
-                                                                parent=tree.root)
+                if tokens_list[0].lexem_class == Lexem.r_par:
+                    if expecting_close_par:
+                        return tree, tokens_list
+                    else:
+                        raise "Unexpected close brace"
 
-                        tree.create_node(tag=arithmetic_token.lexem, parent=arithmetic_class_node.identifier)
+                arithmetic_token = tokens_list[0]
 
-                        subtree, new_tokens = self.__handle_arithmetic_expression_helper(tokens_list[2:], expecting_close_par)
+                if arithmetic_token.lexem_class == Lexem.arithmetic_operation:
+                    arithmetic_class_node = tree.create_node(tag=Lexem.arithmetic_operation,
+                                                            parent=tree.root)
 
-                        if subtree is not None:
-                            tree.paste(tree.root, subtree)
-                            return tree, new_tokens
+                    tree.create_node(tag=arithmetic_token.lexem, parent=arithmetic_class_node.identifier)
+
+                    subtree, new_tokens = self.__handle_arithmetic_expression_helper(tokens_list[1:], expecting_close_par)
+
+                    if subtree is not None:
+                        tree.paste(tree.root, subtree)
+                        return tree, new_tokens
 
         return None, tokens_list
 
@@ -489,7 +497,6 @@ class SyntaxAnalyzer(object):
                 return tree, tokens_list[1:]
         return None, tokens_list
 
-
     def __handle_else_token(self, tokens_list):
         if len(tokens_list) > 0:
             first_token = tokens_list[0]
@@ -499,7 +506,6 @@ class SyntaxAnalyzer(object):
                 tree.create_node(tag="ELSE")
                 return tree, tokens_list[1:]
         return None, tokens_list
-
 
     def __handle_end_token(self, tokens_list):
         if len(tokens_list) > 0:
@@ -513,6 +519,94 @@ class SyntaxAnalyzer(object):
 
     def __get_tokens_for_line(self, tokens, line):
         return list(filter(lambda token: token.line_number == line, tokens))
+
+    def __handle_logical_expression(self, tokens_list):
+        if len(tokens_list) > 0:
+            first_token = tokens_list[0]
+            current_tokens = self.__get_tokens_for_line(tokens_list, first_token.line_number)
+
+            tree, new_tokens = self.__handle_logical_expression_helper(current_tokens, False)
+            if tree is not None:
+                return tree, tokens_list[len(current_tokens):]
+        return None, tokens_list
+
+    def __handle_logical_expression_helper(self, tokens_list, expecting_close_par):
+        if len(tokens_list) > 0:
+
+            tree = None
+            first_token = tokens_list[0]
+            if first_token.lexem_class == Lexem.l_par:
+                expr_tree, new_tokens = self.__handle_logical_expression_helper(tokens_list[1:], True)
+                if expr_tree is not None:
+                    if len(new_tokens) == 0:
+                        raise "Expected close PAR"
+
+                    tree = Tree()
+                    tree.create_node(tag=Constants.logical_expression)
+                    tree.create_node(tag="(", parent=tree.root)
+                    tree.paste(tree.root, expr_tree)
+                    tree.create_node(tag=")", parent=tree.root)
+                    tokens_list = new_tokens[1:]
+
+            else:
+
+                stop_token = next((x for x in tokens_list
+                                   if x.lexem_class == Lexem.logical_operation or x.lexem_class == Lexem.r_par), None)
+
+                stop_index = len(tokens_list)
+                if stop_token is not None:
+                    stop_index = tokens_list.index(stop_token)
+
+                if stop_index > 0:
+                    subtokens = tokens_list[:stop_index]
+                    if len(subtokens) == 1:
+                        token = subtokens[0]
+                        if token.lexem_class == Lexem.identifier or token.lexem_class == Lexem.bool:
+                            tree = Tree()
+                            tree.create_node(tag=Constants.logical_expression)
+
+                            lexem_class_node = tree.create_node(tag=token.lexem_class, parent=tree.root)
+                            tree.create_node(tag=token.lexem, parent=lexem_class_node.identifier)
+
+                    else:
+                        comp_tree, _ = self.__handle_comparasion_expression(subtokens)
+                        if comp_tree is not None:
+
+                            tree = Tree()
+                            tree.create_node(tag=Constants.logical_expression)
+                            tree.paste(tree.root, comp_tree)
+
+                tokens_list = tokens_list[len(subtokens):]
+
+            if len(tokens_list) == 0:
+                return tree, []
+
+            if len(tokens_list) > 0:
+
+                if tokens_list[0].lexem_class == Lexem.r_par:
+                    if expecting_close_par:
+                        return tree, tokens_list
+                    else:
+                        raise "Unexpected close brace"
+
+                logical_token = tokens_list[0]
+
+                if logical_token.lexem_class == Lexem.logical_operation:
+                    op_class_node = tree.create_node(tag=Lexem.logical_operation,
+                                                            parent=tree.root)
+
+                    tree.create_node(tag=logical_token.lexem, parent=op_class_node.identifier)
+
+                    subtree, new_tokens = self.__handle_logical_expression_helper(tokens_list[1:], expecting_close_par)
+
+                    if subtree is not None:
+                        tree.paste(tree.root, subtree)
+                        return tree, new_tokens
+
+
+        return None, tokens_list
+
+
 
 """
 token_1 = Token(lexem_class=Lexem.number, lexem="1", line_number=0, position_number=0)
@@ -584,158 +678,20 @@ token_15 = Token(lexem_class=Lexem.end_keyword, lexem="END", line_number=6, posi
 
 tokens = [token_1, token_2, token_3,token_4,token_5, token_6, token_7, token_8, token_9, token_10, token_11, token_12, token_13, token_14, token_15]
 """
-par_1 = Token(lexem_class=Lexem.l_par, lexem="(", line_number=0, position_number=0)
+l_par = Token(lexem_class=Lexem.l_par, lexem="(", line_number=0, position_number=0)
+r_par = Token(lexem_class=Lexem.r_par, lexem=")", line_number=0, position_number=0)
 
-token_1 = Token(lexem_class=Lexem.number, lexem="1", line_number=0, position_number=0)
-token_2 = Token(lexem_class=Lexem.arithmetic_operation, lexem="+", line_number=0, position_number=0)
-token_3 = Token(lexem_class=Lexem.identifier, lexem="var", line_number=0, position_number=0)
-token_5 = Token(lexem_class=Lexem.r_par, lexem=")", line_number=0, position_number=0)
-par_2 = Token(lexem_class=Lexem.r_par, lexem=")", line_number=0, position_number=0)
+token_1 = Token(lexem_class=Lexem.identifier, lexem="A", line_number=0, position_number=0)
+token_2 = Token(lexem_class=Lexem.logical_operation, lexem="and", line_number=0, position_number=0)
+token_3 = Token(lexem_class=Lexem.identifier, lexem="B", line_number=0, position_number=0)
 
+and_token = Token(lexem_class=Lexem.logical_operation, lexem="AND", line_number=0, position_number=0)
 
-tokens = [par_1, par_1, token_1, token_2, token_3, par_2, par_2]
+token_4 = Token(lexem_class=Lexem.arithmetic_operation, lexem="+", line_number=0, position_number=0)
+token_comp = Token(lexem_class=Lexem.comparison_operation, lexem="<", line_number=0, position_number=0)
+token_6 = Token(lexem_class=Lexem.number, lexem="3", line_number=0, position_number=0)
+
+tokens = [l_par, token_1, token_2, token_3, r_par, and_token, token_3, token_comp, token_6]
 
 syntaxAnalyzer = SyntaxAnalyzer(tokens)
 syntaxAnalyzer.parse_tokens()
-
-
-
-"""
-
-    def __handle_logical_expression(self, tokens_list):
-        if len(tokens_list) > 0:
-            first_token = tokens_list[0]
-
-            current_tokens = self.__get_tokens_for_line(tokens_list[:], first_token.line_number)
-
-            if first_token.lexem_class == Lexem.identifier or \
-                first_token.lexem_class == Lexem.number:
-                tree, new_tokens = self.__handle_arithmetic_expression_helper(current_tokens[:], False)
-                if tree is not None and len(new_tokens):
-
-                    return tree, new_tokens
-
-            if first_token.lexem_class == Lexem.l_par:
-                tree, new_tokens = self.__handle_arithmetic_expression_helper(current_tokens[1:], True)
-                if tree is not None and len(new_tokens) == 0:
-
-                    arithmetic_tree = Tree()
-                    arithmetic_tree.create_node(tag=Constants.arithmetic_expression)
-                    arithmetic_tree.create_node(tag="(", parent=arithmetic_tree.root)
-                    arithmetic_tree.paste(arithmetic_tree.root, tree)
-                    arithmetic_tree.create_node(tag=")", parent=arithmetic_tree.root)
-
-                    return arithmetic_tree, tokens_list[len(current_tokens):]
-
-        return None, tokens_list
-
-
-
-    def __handle_logical_expression_helper(self, tokens_list, expecting_close_par):
-        if len(tokens_list) > 0:
-
-            first_token = tokens_list[0]
-
-            if first_token.lexem_class == Lexem.l_par:
-                expr_tree, new_tokens = self.__handle_arithmetic_expression_helper(tokens_list[1:], True)
-                if expr_tree is not None:
-                    if len(new_tokens) == 0:
-                        raise "Expected close PAR"
-
-                    tree = Tree()
-                    tree.create_node(tag=Constants.arithmetic_expression)
-                    tree.create_node(tag="(", parent=tree.root)
-                    tree.paste(tree.root, expr_tree)
-                    tree.create_node(tag=")", parent=tree.root)
-                    return tree, new_tokens[1:]
-
-            if first_token.lexem_class == Lexem.identifier or \
-                first_token.lexem_class == Lexem.number:
-
-                tree = Tree()
-                tree.create_node(tag=Constants.arithmetic_expression)
-
-                lexem_class_node = tree.create_node(tag=first_token.lexem_class, parent=tree.root)
-
-                tree.create_node(tag=first_token.lexem, parent=lexem_class_node.identifier)
-
-                if len(tokens_list) == 1 and not expecting_close_par:
-                    return tree, tokens_list[1:]
-
-                if len(tokens_list) > 1:
-
-                    if tokens_list[1].lexem_class == Lexem.r_par:
-                        if expecting_close_par:
-                            return tree, tokens_list[2:]
-                        else:
-                            raise "Unexpected close brace"
-
-                    arithmetic_token = tokens_list[1]
-
-                    if arithmetic_token.lexem_class == Lexem.arithmetic_operation:
-                        arithmetic_class_node = tree.create_node(tag=Lexem.arithmetic_operation,
-                                                                parent=tree.root)
-
-                        tree.create_node(tag=arithmetic_token.lexem, parent=arithmetic_class_node.identifier)
-
-                        subtree, new_tokens = self.__handle_arithmetic_expression_helper(tokens_list[2:], expecting_close_par)
-
-                        if subtree is not None:
-                            tree.paste(tree.root, subtree)
-                            return tree, new_tokens
-
-        return None, tokens_list
-
-
-
-
-
-
-
-
-
-
-    def __handle_logical_expression(self, tokens_list):
-        if len(tokens_list) > 0:
-
-            current_token = tokens_list[0]
-
-            if current_token.lexem_class == Lexem.identifier or \
-                            current_token.lexem_class == Lexem.bool:
-
-                current_tokens = self.__get_tokens_for_line(tokens_list, current_token.line_number)
-
-                tree = Tree()
-                tree.create_node(tag=Lexem.logical_expression)
-
-
-                lexem_class_node = tree.create_node(tag=current_token.lexem_class, parent=tree.root)
-
-
-                tree.create_node(tag=current_token.lexem, parent=lexem_class_node.identifier)
-
-
-
-                if len(current_tokens) > 1:
-                    next_token = current_tokens[1]
-
-                    if next_token.lexem_class == Lexem.logical_operation:
-
-                        logic_class_node = tree.create_node(tag=Lexem.logical_operation,
-                                                            parent=tree.root)
-
-                        tree.create_node(tag=next_token.lexem, parent=logic_class_node.identifier)
-
-
-                        subtree, new_tokens = self.__handle_logical_expression(tokens_list[2:])
-
-                        if subtree is not None:
-                            tree.paste(tree.root, subtree)
-                            return tree, new_tokens
-
-                    return None, tokens_list
-
-                return tree, tokens_list[1:]
-        return None, tokens_list
-
-    """
