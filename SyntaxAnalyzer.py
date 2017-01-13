@@ -78,6 +78,16 @@ class SyntaxAnalyzer(object):
                 continue
 
 
+            trees, new_tokens = self.__handle_multiple_assignment(tokens_list[:])
+            if trees is not None:
+                tokens_list = new_tokens
+                for tree in trees:
+                    common_tree.paste(common_tree.root, tree)
+                    continue
+
+
+
+
             tree, new_tokens =  self.__handle_end_token(tokens_list[:])
             if tree is not None:
                 if expect_end_token:
@@ -126,32 +136,6 @@ class SyntaxAnalyzer(object):
 
         raise "DID RECEIVE SYNTAX ERROR"
 
-    def __handle_arithmetic_expression(self, tokens_list):
-        if len(tokens_list) > 0:
-            first_token = tokens_list[0]
-
-            current_tokens = self.__get_tokens_for_line(tokens_list[:], first_token.line_number)
-
-            if first_token.lexem_class == Lexem.identifier or \
-                first_token.lexem_class == Lexem.number:
-                tree, new_tokens = self.__handle_arithmetic_expression_helper(current_tokens[:], False)
-                if tree is not None and len(new_tokens) == 0:
-
-                    return tree, new_tokens
-
-            if first_token.lexem_class == Lexem.l_par:
-                tree, new_tokens = self.__handle_arithmetic_expression_helper(current_tokens[1:], True)
-                if tree is not None and len(new_tokens) == 0:
-
-                    arithmetic_tree = Tree()
-                    arithmetic_tree.create_node(tag=Constants.arithmetic_expression)
-                    arithmetic_tree.create_node(tag="(", parent=arithmetic_tree.root)
-                    arithmetic_tree.paste(arithmetic_tree.root, tree)
-                    arithmetic_tree.create_node(tag=")", parent=arithmetic_tree.root)
-
-                    return arithmetic_tree, tokens_list[len(current_tokens):]
-
-        return None, tokens_list
 
     def __handle_arithmetic_expression(self, tokens_list):
         if len(tokens_list) > 0:
@@ -162,8 +146,6 @@ class SyntaxAnalyzer(object):
             if tree is not None:
                 return tree, tokens_list[len(current_tokens):]
         return None, tokens_list
-
-
 
     def __handle_arithmetic_expression_helper(self, tokens_list, expecting_close_par):
         if len(tokens_list) > 0:
@@ -225,8 +207,6 @@ class SyntaxAnalyzer(object):
                         return tree, new_tokens
 
         return None, tokens_list
-
-
 
     def __handle_comparasion_expression(self, tokens_list):
         if len(tokens_list) >= 3:
@@ -302,7 +282,7 @@ class SyntaxAnalyzer(object):
 
                             return tree, tokens_list[len(current_tokens):]
 
-                        expr_tree, _ = self.__handle_comparasion_expression(sub_tokens)
+                        expr_tree, _ = self.__handle_logical_expression(sub_tokens)
                         if expr_tree is not None:
                             tree.create_node(tag="=", parent=tree.root)
 
@@ -327,7 +307,7 @@ class SyntaxAnalyzer(object):
                             last_token.lexem_class == Lexem.do_keyword:
 
                 comp_tokens = current_tokens[1:-1]
-                comp_tree, _ = self.__handle_comparasion_expression(comp_tokens)
+                comp_tree, _ = self.__handle_logical_expression(comp_tokens)
                 if comp_tree is not None:
                     del tokens_list[:len(current_tokens)]
                     common_tree, new_tokens = self.__handle_common_block(tokens_list, True, False, False)
@@ -352,7 +332,6 @@ class SyntaxAnalyzer(object):
 
                         return tree, new_tokens
         return None, tokens_list
-
 
     def __handle_for_block(self, tokens_list):
 
@@ -426,19 +405,15 @@ class SyntaxAnalyzer(object):
             if_token = tokens_list[0]
             current_tokens = self.__get_tokens_for_line(tokens_list[:], if_token.line_number)
 
-            expression_tree, _ = self.__handle_arithmetic_expression(current_tokens[1:])
-            comp_tree, _ = self.__handle_comparasion_expression(current_tokens[1:])
+            logic_tree, _ = self.__handle_logical_expression(current_tokens[1:])
 
-            if if_token.lexem_class == Lexem.if_keyword and (expression_tree is not None or comp_tree is not None):
+            if if_token.lexem_class == Lexem.if_keyword and logic_tree is not None:
                 common_tokens = tokens_list[len(current_tokens):]
 
                 tree = Tree()
                 tree.create_node(tag=Constants.if_block)
                 tree.create_node(tag="IF", parent=tree.root)
-                if expression_tree is not None:
-                    tree.paste(tree.root, expression_tree)
-                else:
-                    tree.paste(tree.root, comp_tree)
+                tree.paste(tree.root, logic_tree)
 
                 common_tree_elseif_token, new_tokens = self.__handle_common_block(tokens_list=common_tokens[:],
                                                                                   expect_else_token=False,
@@ -448,22 +423,10 @@ class SyntaxAnalyzer(object):
                     if len(new_tokens) > 0:
                         sub_tokens = self.__get_tokens_for_line(new_tokens[0].line_number)
 
-                        expr_tree, after_expr_tokens = self.__handle_arithmetic_expression(sub_tokens[:])
-                        if expr_tree is not None:
+                        l_tree, after_comp_tokens = self.__handle_logical_expression(sub_tokens[:])
+                        if l_tree is not None:
                             tree.create_node(tag="ELSEIF", parent=tree.root)
-                            tree.paste(tree.root, expr_tree)
-                            common_tree_elseif_token, new_tokens = self.__handle_common_block(
-                                tokens_list=after_expr_tokens[:],
-                                expect_else_token=False,
-                                expect_end_token=False,
-                                expect_elseif_token=True)
-
-                            continue
-
-                        comp_tree, after_comp_tokens = self.__handle_comparasion_expression(sub_tokens[:])
-                        if comp_tree is not None:
-                            tree.create_node(tag="ELSEIF", parent=tree.root)
-                            tree.paste(tree.root, comp_tree)
+                            tree.paste(tree.root, l_tree)
                             common_tree_elseif_token, new_tokens = self.__handle_common_block(
                                 tokens_list=new_tokens[after_comp_tokens[:]],
                                 expect_else_token=False,
@@ -606,6 +569,57 @@ class SyntaxAnalyzer(object):
 
         return None, tokens_list
 
+    def __handle_multiple_assignment(self, tokens_list):
+        if len(tokens_list) > 0:
+            current_tokens = self.__get_tokens_for_line(tokens_list, tokens_list[0].line_number)
+
+            assign_token = next((x for x in current_tokens
+                                 if x.lexem_class == Lexem.assign), None)
+
+            if assign_token is not None:
+                index = current_tokens.index(assign_token)
+
+                identifier_subtokens = current_tokens[:index]
+                value_tokens = current_tokens[index+1:]
+
+                valid_id = False
+                id_tokens = []
+                for i in range(len(identifier_subtokens)):
+                    if i % 2 == 1:
+                        valid_id = identifier_subtokens[i].lexem_class == Lexem.comma
+                    else:
+                        valid_id = identifier_subtokens[i].lexem_class == Lexem.identifier
+                        if valid_id:
+                            id_tokens.append(identifier_subtokens[i])
+
+                expr_tokens = []
+                expr_subtokens = []
+                for i in range(len(value_tokens)):
+                    if value_tokens[i].lexem_class == Lexem.comma:
+                        expr_tokens.append(expr_subtokens)
+                        expr_subtokens = []
+                        continue
+                    else:
+                        expr_subtokens.append(value_tokens[i])
+                expr_tokens.append(expr_subtokens)
+
+                if len(expr_tokens) == len(id_tokens) and valid_id:
+                    trees = []
+                    for i in range(len(expr_tokens)):
+                        line_number = id_tokens[0].line_number
+                        single_assign_tokens = [id_tokens[i]] + \
+                                               [Token(lexem_class=Lexem.assign, lexem="=", line_number=line_number, position_number=0)] + \
+                                                expr_tokens[i]
+
+                        tree, _ = self.__handle_identifier(single_assign_tokens)
+                        if tree is not None:
+                            trees.append(tree)
+                            continue
+                        return None, tokens_list
+
+                    return trees, tokens_list[len(current_tokens):]
+
+        return None, tokens_list
 
 
 """
@@ -678,20 +692,32 @@ token_15 = Token(lexem_class=Lexem.end_keyword, lexem="END", line_number=6, posi
 
 tokens = [token_1, token_2, token_3,token_4,token_5, token_6, token_7, token_8, token_9, token_10, token_11, token_12, token_13, token_14, token_15]
 """
-l_par = Token(lexem_class=Lexem.l_par, lexem="(", line_number=0, position_number=0)
-r_par = Token(lexem_class=Lexem.r_par, lexem=")", line_number=0, position_number=0)
+token_1 = Token(lexem_class=Lexem.identifier, lexem="i", line_number=0, position_number=0)
+token_2 = Token(lexem_class=Lexem.comma, lexem=",", line_number=0, position_number=0)
+token_3 = Token(lexem_class=Lexem.identifier, lexem="k", line_number=0, position_number=0)
+token_4 = Token(lexem_class=Lexem.comma, lexem=",", line_number=0, position_number=0)
+token_5 = Token(lexem_class=Lexem.identifier, lexem="j", line_number=0, position_number=0)
 
-token_1 = Token(lexem_class=Lexem.identifier, lexem="A", line_number=0, position_number=0)
-token_2 = Token(lexem_class=Lexem.logical_operation, lexem="and", line_number=0, position_number=0)
-token_3 = Token(lexem_class=Lexem.identifier, lexem="B", line_number=0, position_number=0)
+token_6 = Token(lexem_class=Lexem.assign, lexem="=", line_number=0, position_number=0)
 
-and_token = Token(lexem_class=Lexem.logical_operation, lexem="AND", line_number=0, position_number=0)
+token_7 = Token(lexem_class=Lexem.number, lexem="4", line_number=0, position_number=0)
+token_8 = Token(lexem_class=Lexem.comparison_operation, lexem="<", line_number=0, position_number=0)
+token_9 = Token(lexem_class=Lexem.number, lexem="3", line_number=0, position_number=0)
+token_10 = Token(lexem_class=Lexem.comma, lexem=",", line_number=0, position_number=0)
 
-token_4 = Token(lexem_class=Lexem.arithmetic_operation, lexem="+", line_number=0, position_number=0)
-token_comp = Token(lexem_class=Lexem.comparison_operation, lexem="<", line_number=0, position_number=0)
-token_6 = Token(lexem_class=Lexem.number, lexem="3", line_number=0, position_number=0)
 
-tokens = [l_par, token_1, token_2, token_3, r_par, and_token, token_3, token_comp, token_6]
+token_11 = Token(lexem_class=Lexem.number, lexem="1", line_number=0, position_number=0)
+token_12 = Token(lexem_class=Lexem.arithmetic_operation, lexem="+", line_number=0, position_number=0)
+token_13 = Token(lexem_class=Lexem.number, lexem="3", line_number=0, position_number=0)
+token_14 = Token(lexem_class=Lexem.comma, lexem=",", line_number=0, position_number=0)
 
+
+token_15 = Token(lexem_class=Lexem.number, lexem="6", line_number=0, position_number=0)
+token_16 = Token(lexem_class=Lexem.arithmetic_operation, lexem="-", line_number=0, position_number=0)
+token_17 = Token(lexem_class=Lexem.number, lexem="3", line_number=0, position_number=0)
+
+
+
+tokens = [token_1, token_2, token_3,token_4,token_5, token_6, token_7, token_8, token_9, token_10, token_11, token_12, token_13, token_14, token_15, token_16, token_17]
 syntaxAnalyzer = SyntaxAnalyzer(tokens)
 syntaxAnalyzer.parse_tokens()

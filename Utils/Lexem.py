@@ -33,6 +33,8 @@ l_square = "["
 r_square = "]"
 dot = "DOT"
 
+comma = "COMMA"
+
 
 expression = "EXPRESSION"
 logical_expression = "LOGICAL_EXPRESSION"
