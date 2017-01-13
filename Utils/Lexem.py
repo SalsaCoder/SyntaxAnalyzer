@@ -3,7 +3,7 @@ number = "NUM"
 bool = "BOOL"
 
 
-arithmetic_operation = "arithmetic_operation"
+arithmetic_operation = "ARITHMETIC_OPERATION"
 
 if_keyword = "IF_KEYWORD"
 else_keyword = "ELSE_KEYWORD"
