@@ -1,6 +1,12 @@
 from treelib import Node, Tree
 from Utils import Lexem, Constants
 
+class NameTableRecord(object):
+    name = ""
+    type = ""
+    scope = 0
+
+
 
 
 class Token(object):
@@ -16,17 +22,78 @@ class Token(object):
         self.position_number = position_number
 
 
+class SemanticAnalyzer(object):
+    name_table = []
+
+    def __get_type(self, name, scope):
+        record = next((x for x in self.name_table
+                        if x.name == name and x.scope == scope), None)
+        return record
+
+    def __get_tree_paths(self, tree):
+        paths = tree.paths_to_leaves()
+        tokens_path = []
+        for outer in paths:
+            token_path = []
+            for path in outer:
+                token = tree.get_node(path)
+                token_path.append(token)
+            tokens_path.append(token_path)
+
+        return tokens_path
+
+    def check_tree(self, tree):
+        if tree is not None:
+            token_paths = self.__get_tree_paths(tree)
+            check = True
+            for token_path in token_paths:
+                identifier_token = token_path[-2]
+                if identifier_token.tag == Lexem.identifier:
+                    expr_node = token_path[-3]
+
+                    if expr_node.tag == Constants.arithmetic_expression:
+                        common_tokens = list(filter(lambda token: token.tag == Constants.common_block, token_path))
+                        depth_level = len(common_tokens) - 1
+                        name = token_path[-1].tag
+                        type = self.__get_type(name, depth_level)
+
+                        if type != Lexem.number:
+                            check = False
+
+                    if expr_node.tag == Constants.logical_expression:
+                        common_tokens = list(filter(lambda token: token.tag == Constants.common_block, token_path))
+                        depth_level = len(common_tokens) - 1
+                        name = token_path[-1].tag
+                        type = self.__get_type(name, depth_level)
+
+                        if type != Lexem.bool:
+                            check = False
+            return check
+        return False
+
 class SyntaxAnalyzer(object):
 
     __tokens = []
     __node_identifier = 0
+
+    def __get_tree_paths(self, tree):
+        paths = tree.paths_to_leaves()
+        tokens_path = []
+        for outer in paths:
+            token_path = []
+            for path in outer:
+                token = tree.get_node(path)
+                token_path.append(token)
+            tokens_path.append(token_path)
+
+        return tokens_path
+
 
     def __init__(self, tokens):
         self.__tokens = tokens
 
     def parse_tokens(self):
         tree, _ = self.__handle_common_block(self.__tokens[:], False, False, False)
-        tree.show()
         tree.show()
 
     def __handle_common_block(self, tokens_list, expect_end_token, expect_elseif_token, expect_else_token):
