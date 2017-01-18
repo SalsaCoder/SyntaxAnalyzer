@@ -892,6 +892,6 @@ record_1 = NameTableRecord(name="elses", type=Lexem.string, scope=1)
 record_2 = NameTableRecord(name="q", type=Lexem.string, scope=1)
 
 semanticAnalyzer = SemanticAnalyzer([record_1, record_2])
-# semanticAnalyzer.check_tree(tree)
+semanticAnalyzer.check_tree(tree)
 
 tree.show()
